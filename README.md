@@ -7,24 +7,37 @@
 - `DELETE /login`
 - `GET /users`
 - `POST /message/{id}`
-- `UPDATE /message/{id}`
 - `DELETE /message/{id}`
-- `GET /notifications`
+
 
 ## Database Structure
 
 ```sql
-Table Users {
-  user_id SERIAL [pk]
-  username VARCHAR(50) [not null]
-  password VARCHAR(100) [not null]
-}
+CREATE DATABASE cs2_pro_players;
 
-Table Messages {
-  message_id SERIAL [pk]
-  sender_id INTEGER [not null, ref: > Users.user_id]
-  receiver_id INTEGER [not null, ref: > Users.user_id]
-  message_text TEXT [not null]
-  sent_at TIMESTAMP [default: `CURRENT_TIMESTAMP`]
-}
+USE cs2_pro_players;
+
+CREATE TABLE Players (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255),
+    team VARCHAR(255),
+    country VARCHAR(255),
+    date_of_birth DATE
+);
+
+CREATE TABLE PlayerStats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    player_id INT,
+    date DATE,
+    kills INT,
+    deaths INT,
+    kd_ratio DECIMAL(5,2),
+    maps_played INT,
+    total_rounds INT,
+    rounds_per_map DECIMAL(5,2),
+    damage_per_round DECIMAL(8,2),
+    grenade_dmg_per_round DECIMAL(8,2),
+    FOREIGN KEY (player_id) REFERENCES Players(id)
+);
+
 
