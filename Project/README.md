@@ -1,4 +1,4 @@
-#Student info:
+Student info:
 - 'Sagataly Aidyn'
 - 22B030424
 
