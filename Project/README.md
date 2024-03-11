@@ -5,7 +5,7 @@ Student info:
 
 
 
-# Messanger project
+# Solo project
 
 ## Rest API
 - `POST /register`
