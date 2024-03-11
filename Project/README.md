@@ -12,8 +12,8 @@ Student info:
 - `GET /login`
 - `DELETE /login`
 - `GET /users`
-- `POST /message/{id}`
-- `UPDATE /message/{id}`
+- `POST /{id}`
+- `UPDATE /{id}`
 
 
 ## Database Structure
