@@ -1,3 +1,10 @@
+#Student info:
+- 'Sagataly Aidyn'
+- 22B030424
+
+
+
+
 # Messanger project
 
 ## Rest API
@@ -12,16 +19,10 @@
 ## Database Structure
 
 ```sql
-Table Users {
-  user_id SERIAL [pk]
-  username VARCHAR(50) [not null]
-  password VARCHAR(100) [not null]
-}
-
-Table Messages {
-  message_id SERIAL [pk]
-  sender_id INTEGER [not null, ref: > Users.user_id]
-  receiver_id INTEGER [not null, ref: > Users.user_id]
-  message_text TEXT [not null]
-  sent_at TIMESTAMP [default: `CURRENT_TIMESTAMP`]
-}
+CREATE TABLE IF NOT EXISTS Players (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255),
+			team VARCHAR(255),
+			country VARCHAR(255),
+			date_of_birth DATE
+	)
