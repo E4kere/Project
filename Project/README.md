@@ -2,7 +2,13 @@
 
 ## About the Project
 
-This project is a web application designed to simplify inventory management for a small gun store. The application allows store owners to efficiently manage the catalog of guns, track orders, and interact with customers through a user-friendly interface.
+This project is a web application for managing CS2 guns. It allows users to perform CRUD (Create, Read, Update, Delete) operations on gun records. Users can add new guns, view existing guns, update gun information, and delete guns from the system.
+
+##Technologies Used
+
+- **Backend: Go (Golang)**
+- **Database: PostgreSQL**
+- **Web Framework: Gorilla Mux**
 
 ### Key Features
 
