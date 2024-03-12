@@ -7,8 +7,6 @@ This project is a web application designed to simplify inventory management for 
 ### Key Features
 
 - **Catalog Management**: Add, update, delete, and view information about guns.
-- **Order Management**: Create, update, and track the status of orders.
-- **Customer Management**: Register, update customer information, and view their order history.
 
 ## Rest API
 - **POST /guns** - Add a new gun to the catalog.
