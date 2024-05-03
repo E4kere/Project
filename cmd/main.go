@@ -9,10 +9,20 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/E4kere/Project/auth"
+	"github.com/E4kere/Project/controller"
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
+
+func init() {
+	auth.LoadEnvVariables()
+	auth.ConnectToDB()
+	auth.SyncDB()
+
+}
 
 type PaginatedResponse struct {
 	TotalRecords int   `json:"totalRecords"`
@@ -56,6 +66,10 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	r := gin.Default()
+	r.POST("/signup", controller.Signup)
+
+	r.Run()
 
 	defer db.Close()
 

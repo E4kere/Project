@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"os"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -10,10 +9,10 @@ import (
 
 var DB *gorm.DB
 
-func connectToDB() {
-	var err error
+func ConnectToDB() {
 
-	dsn := os.Getenv("DB")
+	var err error
+	dsn := "host=localhost user=postgres password=050208551027 dbname=auth port=5432 sslmode=disable "
 
 	fmt.Println("DSN:", dsn)
 
