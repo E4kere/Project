@@ -1,51 +1,72 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/E4kere/Project/auth"
 	"github.com/E4kere/Project/models"
-	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func Signup(c *gin.Context) {
+func Signup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email    string
 		Password string
 	}
 
-	if c.Bind(&body) != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Failed to read",
-		})
-
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	//Hash
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), 10)
-
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Error hashing",
-		})
-
+		http.Error(w, "Error hashing password", http.StatusInternalServerError)
 		return
 	}
 
-	//Create
 	user := models.User{Email: body.Email, Password: string(hash)}
-
 	result := auth.DB.Create(&user)
 
 	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Username already exists",
-		})
+		http.Error(w, "User already exists", http.StatusBadRequest)
 		return
 	}
-	//respond
-	c.JSON(http.StatusOK, gin.H{})
+	w.WriteHeader(http.StatusOK)
+}
 
+func Login(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email    string
+		Password string
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	var user models.User
+	result := auth.DB.Where("email = ?", body.Email).First(&user)
+
+	if result.Error != nil {
+		http.Error(w, "User not found", http.StatusBadRequest)
+		return
+	}
+
+	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
+	if err != nil {
+		http.Error(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := auth.GenerateJWT(user.Email)
+	if err != nil {
+		http.Error(w, "Error generating token", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
