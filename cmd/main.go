@@ -4,44 +4,61 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
-	"github.com/E4kere/Project/auth"
-	"github.com/E4kere/Project/controller"
-	"github.com/E4kere/Project/middleware"
 	"github.com/E4kere/Project/models"
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
-	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 )
 
-var db *sqlx.DB
-
-func main() {
-	auth.ConnectToDB()
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	router := mux.NewRouter()
-	router.HandleFunc("/login", controller.Login).Methods("POST")
-	router.HandleFunc("/signup", controller.Signup).Methods("POST")
-
-	// Protected routes
-	protectedRouter := router.PathPrefix("/").Subrouter()
-	protectedRouter.Use(middleware.AuthMiddleware)
-	protectedRouter.HandleFunc("/guns", listGuns).Methods("GET")
-	protectedRouter.HandleFunc("/guns", createGun).Methods("POST")
-	protectedRouter.HandleFunc("/guns/{id}", deleteGun).Methods("DELETE")
-
-	log.Fatal(http.ListenAndServe(":8080", router))
+type application struct {
+	db     *sqlx.DB
+	models models.Models
+	jwtKey []byte
 }
 
-// Handler to list guns
-func listGuns(w http.ResponseWriter, r *http.Request) {
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Connect to the database using sqlx
+	db, err := sqlx.Connect("postgres", "postgres://postgres:050208551027@localhost:5432/gun?sslmode=disable")
+	if err != nil {
+		log.Fatalf("Error opening database: %v\n", err)
+	}
+	defer db.Close()
+
+	// Initialize the application struct
+	app := &application{
+		db:     db,
+		models: models.NewModels(db),
+		jwtKey: []byte("be5906c88cb6519f83fadf949bb2cde051b288613e73845182f473c911464af3")}
+
+	// Set up routes
+	router := mux.NewRouter()
+	router.HandleFunc("/register", app.Register).Methods("POST")
+	router.HandleFunc("/login", app.Login).Methods("POST")
+
+	// CRUD routes for guns
+	router.HandleFunc("/guns", app.listGuns).Methods("GET")
+	router.HandleFunc("/guns", app.createGun).Methods("POST")
+	router.HandleFunc("/guns/{id}", app.getGunByID).Methods("GET")
+	router.HandleFunc("/guns/{id}", app.updateGun).Methods("PUT")
+	router.HandleFunc("/guns/{id}", app.deleteGun).Methods("DELETE")
+
+	// Start the server
+	log.Printf("Starting server on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, router))
+}
+
+func (app *application) listGuns(w http.ResponseWriter, r *http.Request) {
 	var guns []models.Gun
-	err := db.Select(&guns, "SELECT id, name, price, damage FROM guns")
+	err := app.db.Select(&guns, "SELECT id, name, price, damage FROM guns ORDER BY id")
 	if err != nil {
 		http.Error(w, "Unable to fetch guns", http.StatusInternalServerError)
 		return
@@ -51,8 +68,7 @@ func listGuns(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(guns)
 }
 
-// Handler to create a gun
-func createGun(w http.ResponseWriter, r *http.Request) {
+func (app *application) createGun(w http.ResponseWriter, r *http.Request) {
 	var gun models.Gun
 	if err := json.NewDecoder(r.Body).Decode(&gun); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
@@ -60,7 +76,7 @@ func createGun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO guns (name, price, damage) VALUES ($1, $2, $3) RETURNING id"
-	err := db.QueryRow(query, gun.Name, gun.Price, gun.Damage).Scan(&gun.ID)
+	err := app.db.QueryRow(query, gun.Name, gun.Price, gun.Damage).Scan(&gun.ID)
 	if err != nil {
 		http.Error(w, "Unable to create gun", http.StatusInternalServerError)
 		return
@@ -70,8 +86,52 @@ func createGun(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(gun)
 }
 
-// Handler to delete a gun
-func deleteGun(w http.ResponseWriter, r *http.Request) {
+func (app *application) getGunByID(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var gun models.Gun
+	err = app.db.Get(&gun, "SELECT id, name, price, damage FROM guns WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, "Gun not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(gun)
+}
+
+func (app *application) updateGun(w http.ResponseWriter, r *http.Request) {
+	idStr := mux.Vars(r)["id"]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var gun models.Gun
+	if err := json.NewDecoder(r.Body).Decode(&gun); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	gun.ID = id
+	query := "UPDATE guns SET name = $1, price = $2, damage = $3 WHERE id = $4"
+	_, err = app.db.Exec(query, gun.Name, gun.Price, gun.Damage, gun.ID)
+	if err != nil {
+		http.Error(w, "Unable to update gun", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(gun)
+}
+
+func (app *application) deleteGun(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -80,7 +140,7 @@ func deleteGun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "DELETE FROM guns WHERE id = $1"
-	_, err = db.Exec(query, id)
+	_, err = app.db.Exec(query, id)
 	if err != nil {
 		http.Error(w, "Unable to delete gun", http.StatusInternalServerError)
 		return
@@ -89,194 +149,55 @@ func deleteGun(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// package main
+func (app *application) Register(w http.ResponseWriter, r *http.Request) {
+	var credentials models.UserCredentials
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
 
-// import (
-// 	"encoding/json"
-// 	"fmt"
-// 	"log"
-// 	"net/http"
-// 	"strconv"
-// 	"sync"
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(credentials.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Unable to hash password", http.StatusInternalServerError)
+		return
+	}
 
-// 	"github.com/E4kere/Project/models"
+	// Call Insert on Users model
+	err = app.models.Users.Insert("User Name", credentials.Email, hashedPassword)
+	if err != nil {
+		http.Error(w, "Unable to create user", http.StatusInternalServerError)
+		return
+	}
 
-// 	"github.com/gorilla/mux"
-// 	"github.com/jmoiron/sqlx"
-// 	_ "github.com/lib/pq"
-// )
+	w.WriteHeader(http.StatusCreated)
+}
+func (app *application) Login(w http.ResponseWriter, r *http.Request) {
+	var credentials models.UserCredentials
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
 
-// type PaginatedResponse struct {
-// 	TotalRecords int          `json:"totalRecords"`
-// 	TotalPages   int          `json:"totalPages"`
-// 	PageSize     int          `json:"pageSize"`
-// 	CurrentPage  int          `json:"currentPage"`
-// 	Data         []models.Gun `json:"data"`
-// }
+	user, err := app.models.Users.GetByEmail(credentials.Email)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		return
+	}
 
-// type application struct {
-// 	mu     sync.Mutex
-// 	guns   map[int]models.Gun
-// 	nextID int
-// 	db     *sqlx.DB
-// }
+	// Use Matches to check the password
+	if !user.Password.Matches(credentials.Password) {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
 
-// func (app *application) notFoundResponse(w http.ResponseWriter, r *http.Request) {
-// 	w.WriteHeader(http.StatusNotFound)
-// 	fmt.Fprintf(w, "404: Not Found")
-// }
+	token, err := app.models.Tokens.New(user.ID, app.jwtKey)
+	if err != nil {
+		http.Error(w, "Unable to generate token", http.StatusInternalServerError)
+		return
+	}
 
-// func main() {
-// 	db, err := sqlx.Connect("postgres", "user=postgres dbname=gun sslmode=disable password=050208551027 host=localhost")
-// 	if err != nil {
-// 		log.Fatalln(err)
-// 	}
-// 	defer db.Close()
-
-// 	app := &application{db: db}
-// 	srv := &http.Server{
-// 		Addr:    fmt.Sprintf(":%d", 8080),
-// 		Handler: app.routes(),
-// 	}
-
-// 	log.Printf("Starting server on %s", srv.Addr)
-// 	err = srv.ListenAndServe()
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// }
-
-// func (app *application) routes() http.Handler {
-// 	router.Run(":8080")
-
-// func (app *application) listGuns(w http.ResponseWriter, r *http.Request) {
-// 	// Get sorting parameters from the query string
-// 	sortField := r.URL.Query().Get("sort")
-// 	sortOrder := r.URL.Query().Get("order")
-
-// 	// Default sorting by ID if not specified
-// 	if sortField == "" {
-// 		sortField = "id"
-// 	}
-
-// 	// Default order is ascending if not specified
-// 	if sortOrder != "asc" && sortOrder != "desc" {
-// 		sortOrder = "asc"
-// 		}}}
-
-// 	// Validate sorting field
-// 	validSortFields := map[string]bool{
-// 		"id": true, "name": true, "price": true, "damage": true,
-// 	}
-// 	if !validSortFields[sortField] {
-// 		http.Error(w, "Invalid sort field", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Construct the SQL query with sorting
-// 	query := fmt.Sprintf("SELECT id, name, price, damage FROM guns ORDER BY %s %s", sortField, sortOrder)
-
-// 	// Execute the query to fetch all guns
-// 	var guns []models.Gun
-// 	err := app.db.Select(&guns, query)
-// 	if err != nil {
-// 		http.Error(w, "Unable to retrieve guns", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Prepare the response
-// 	response := PaginatedResponse{
-// 		Data: guns,
-// 	}
-
-// 	// Calculate the total number of records (without pagination)
-// 	response.TotalRecords = len(guns)
-// 	response.TotalPages = 1
-// 	response.PageSize = response.TotalRecords
-// 	response.CurrentPage = 1
-
-// 	// Encode and write the response as JSON
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(response)
-// }
-
-// func (app *application) getGunByID(w http.ResponseWriter, r *http.Request) {
-// 	idStr := mux.Vars(r)["id"]
-// 	id, err := strconv.Atoi(idStr)
-// 	if err != nil {
-// 		http.Error(w, "Invalid ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	var gun models.Gun
-// 	err = app.db.Get(&gun, "SELECT id, name, price, damage FROM guns WHERE id = $1", id)
-// 	if err != nil {
-// 		http.Error(w, "Gun not found", http.StatusNotFound)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(gun)
-// }
-
-// func (app *application) createGun(w http.ResponseWriter, r *http.Request) {
-// 	var gun models.Gun
-// 	if err := json.NewDecoder(r.Body).Decode(&gun); err != nil {
-// 		http.Error(w, "Invalid input", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	query := "INSERT INTO guns (name, price, damage) VALUES ($1, $2, $3) RETURNING id"
-// 	err := app.db.QueryRow(query, gun.Name, gun.Price, gun.Damage).Scan(&gun.ID)
-// 	if err != nil {
-// 		http.Error(w, "Unable to create gun", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(gun)
-// }
-
-// func (app *application) updateGun(w http.ResponseWriter, r *http.Request) {
-// 	idStr := mux.Vars(r)["id"]
-// 	id, err := strconv.Atoi(idStr)
-// 	if err != nil {
-// 		http.Error(w, "Invalid ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	var gun models.Gun
-// 	if err := json.NewDecoder(r.Body).Decode(&gun); err != nil {
-// 		http.Error(w, "Invalid input", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	gun.ID = id
-// 	query := "UPDATE guns SET name = $1, price = $2, damage = $3 WHERE id = $4"
-// 	_, err = app.db.Exec(query, gun.Name, gun.Price, gun.Damage, gun.ID)
-// 	if err != nil {
-// 		http.Error(w, "Unable to update gun", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(gun)
-// }
-
-// func (app *application) deleteGun(w http.ResponseWriter, r *http.Request) {
-// 	idStr := mux.Vars(r)["id"]
-// 	id, err := strconv.Atoi(idStr)
-// 	if err != nil {
-// 		http.Error(w, "Invalid ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	query := "DELETE FROM guns WHERE id = $1"
-// 	_, err = app.db.Exec(query, id)
-// 	if err != nil {
-// 		http.Error(w, "Unable to delete gun", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.WriteHeader(http.StatusNoContent)
-// }
+	http.SetCookie(w, &http.Cookie{
+		Name:  "token",
+		Value: token,
+	})
+}
