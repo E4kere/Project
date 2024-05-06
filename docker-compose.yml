@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    image: my-go-app:latest
+    build:
+      context: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=050208551027
+      - APP_DSN= "postgres://postgres:050208551027@db:5432/gun?sslmode=disable"
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=050208551027
+      - POSTGRES_DB=gun
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
