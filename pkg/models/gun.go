@@ -1,6 +1,8 @@
 package models
 
 import (
+	"database/sql"
+	"log"
 	"time"
 )
 
@@ -11,4 +13,10 @@ type Gun struct {
 	Damage    int       `json:"damage"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type GunModel struct {
+	DB       *sql.DB
+	InfoLog  *log.Logger
+	ErrorLog *log.Logger
 }
