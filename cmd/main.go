@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/E4kere/Project/pkg/jsonlog"
 	"github.com/E4kere/Project/pkg/models"
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
@@ -15,9 +16,10 @@ import (
 )
 
 type application struct {
-	db       *sqlx.DB
-	errorLog *log.Logger
-	models   models.Models
+	db *sqlx.DB
+
+	logger *jsonlog.Logger
+	models models.Models
 }
 
 type PaginatedResponse struct {
@@ -46,22 +48,21 @@ func main() {
 		db: db,
 	}
 
-	// Set up routes
 	router := mux.NewRouter()
-	// router.HandleFunc("/register", app.Register).Methods("POST")
-	// router.HandleFunc("/login", app.Login).Methods("POST")
 
-	// router.Use(app.Authenticate)
+	router.NotFoundHandler = http.HandlerFunc(app.notFoundResponse)
 
-	// CRUD routes for guns
-	gunsRouter := router.PathPrefix("/guns").Subrouter()
+	// Convert app.methodNotAllowedResponse helper to a http.Handler and set it as the custom
+	// error handler for 405 Method Not Allowed responses
+	router.MethodNotAllowedHandler = http.HandlerFunc(app.methodNotAllowedResponse)
+
 	// gunsRouter.Use(app.Authenticate)
-	gunsRouter.HandleFunc("", app.listGuns).Methods("GET")
-	gunsRouter.HandleFunc("", app.createGun).Methods("POST")
-	gunsRouter.HandleFunc("/{id}", app.getGunByID).Methods("GET")
-	gunsRouter.HandleFunc("/{id}", app.updateGun).Methods("PUT")
-	gunsRouter.HandleFunc("/{id}", app.deleteGun).Methods("DELETE")
-
+	router.HandleFunc("/guns", app.listGuns).Methods("GET")
+	router.HandleFunc("/guns", app.createGun).Methods("POST")
+	router.HandleFunc("/guns/{id}", app.getGunByID).Methods("GET")
+	router.HandleFunc("/guns/{id}", app.updateGun).Methods("PUT")
+	router.HandleFunc("/guns/{id}", app.deleteGun).Methods("DELETE")
+	router.HandleFunc("/users", app.registerUserHandler).Methods("POST")
 	// Start the server
 	log.Printf("Starting server on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, router))
@@ -220,208 +221,3 @@ func (app *application) deleteGun(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// func (app *application) Register(w http.ResponseWriter, r *http.Request) {
-// 	var user struct {
-// 		Name     string `json:"name"`
-// 		Email    string `json:"email"`
-// 		Password string `json:"password"`
-// 	}
-
-// 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-// 		http.Error(w, "Invalid input", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-// 	if err != nil {
-// 		http.Error(w, "Unable to hash password", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	query := `
-// 			INSERT INTO users (name, email, password_hash)
-// 			VALUES ($1, $2, $3)
-// 			RETURNING id
-// 	`
-// 	var userID int64
-// 	err = app.db.QueryRow(query, user.Name, user.Email, hashedPassword).Scan(&userID)
-// 	if err != nil {
-// 		http.Error(w, "Unable to create user", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Generate JWT token
-// 	tokenString, err := app.generateToken(userID)
-// 	if err != nil {
-// 		http.Error(w, "Unable to generate token", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Set JWT token as cookie
-// 	http.SetCookie(w, &http.Cookie{
-// 		Name:     "token",
-// 		Value:    tokenString,
-// 		Expires:  time.Now().Add(24 * time.Hour),
-// 		HttpOnly: true,
-// 		SameSite: http.SameSiteStrictMode,
-// 	})
-
-// 	// Return success response
-// 	w.WriteHeader(http.StatusCreated)
-// 	json.NewEncoder(w).Encode(map[string]interface{}{
-// 		"message": "User registered successfully",
-// 		"token":   tokenString,
-// 	})
-// }
-
-// func (app *application) Login(w http.ResponseWriter, r *http.Request) {
-// 	var user struct {
-// 		Email    string `json:"email"`
-// 		Password string `json:"password"`
-// 	}
-
-// 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-// 		http.Error(w, "Invalid input", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	var userID int64
-// 	var hashedPassword []byte
-// 	err := app.db.QueryRow("SELECT id, password_hash FROM users WHERE email = $1", user.Email).Scan(&userID, &hashedPassword)
-// 	if err != nil {
-// 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-// 		return
-// 	}
-
-// 	if err := bcrypt.CompareHashAndPassword(hashedPassword, []byte(user.Password)); err != nil {
-// 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-// 		return
-// 	}
-
-// 	// Generate JWT token
-// 	tokenString, err := app.generateToken(userID)
-// 	if err != nil {
-// 		http.Error(w, "Unable to generate token", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Set JWT token as cookie
-// 	http.SetCookie(w, &http.Cookie{
-// 		Name:     "token",
-// 		Value:    tokenString,
-// 		Expires:  time.Now().Add(24 * time.Hour),
-// 		HttpOnly: true,
-// 		SameSite: http.SameSiteStrictMode,
-// 	})
-
-// 	// Return success response
-// 	w.WriteHeader(http.StatusOK)
-// 	json.NewEncoder(w).Encode(map[string]interface{}{
-// 		"message": "Login successful",
-// 		"token":   tokenString,
-// 	})
-// }
-
-// func (app *application) Authenticate(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		cookie, err := r.Cookie("token")
-// 		if err != nil {
-// 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-// 			return
-// 		}
-
-// 		tokenString := cookie.Value
-// 		claims := &Claims{}
-
-// 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-// 			return app.jwtSecret, nil
-// 		})
-// 		if err != nil || !token.Valid {
-// 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-// 			return
-// 		}
-
-// 		ctx := context.WithValue(r.Context(), "user_id", strconv.FormatInt(claims.UserID, 10))
-
-// 		next.ServeHTTP(w, r.WithContext(ctx))
-// 	})
-// }
-
-// func (app *application) generateToken(userID int64) (string, error) {
-// 	claims := &Claims{
-// 		UserID: userID,
-// 		StandardClaims: jwt.StandardClaims{
-// 			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
-// 			Issuer:    "your-issuer",
-// 		},
-// 	}
-
-// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-// 	return token.SignedString(app.jwtSecret)
-// }
-
-// // Automated tests in Postman
-// func runTestsInPostman() {
-// 	// Test GET request to retrieve data
-// 	testGetRequest("Retrieve Data", "http://localhost:8080/guns")
-
-// 	// Test POST request to create data
-// 	testPostRequest("Create Data", "http://localhost:8080/guns", map[string]interface{}{
-// 		"name":   "Gun Name",
-// 		"price":  100,
-// 		"damage": 50,
-// 	})
-
-// 	// Test DELETE request to delete data
-
-// 	testDeleteRequest("Delete Data", "http://localhost:8080/guns/100")
-
-// }
-
-// func testGetRequest(testName, url string) {
-// 	log.Printf("Running test: %s", testName)
-// 	response, err := http.Get(url)
-// 	if err != nil {
-// 		log.Fatalf("Error executing GET request: %v", err)
-// 	}
-// 	defer response.Body.Close()
-
-// 	log.Printf("Response status: %s", response.Status)
-
-// }
-
-// func testPostRequest(testName, url string, data interface{}) {
-// 	log.Printf("Running test: %s", testName)
-// 	payload, err := json.Marshal(data)
-// 	if err != nil {
-// 		log.Fatalf("Error marshalling data: %v", err)
-// 	}
-
-// 	response, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
-// 	if err != nil {
-// 		log.Fatalf("Error executing POST request: %v", err)
-// 	}
-// 	defer response.Body.Close()
-
-// 	log.Printf("Response status: %s", response.Status)
-// 	// Additional assertions can be added here to verify the response
-// }
-
-// func testDeleteRequest(testName, url string) {
-// 	log.Printf("Running test: %s", testName)
-// 	client := &http.Client{}
-// 	req, err := http.NewRequest("DELETE", url, nil)
-// 	if err != nil {
-// 		log.Fatalf("Error creating DELETE request: %v", err)
-// 	}
-
-// 	response, err := client.Do(req)
-// 	if err != nil {
-// 		log.Fatalf("Error executing DELETE request: %v", err)
-// 	}
-// 	defer response.Body.Close()
-
-// 	log.Printf("Response status: %s", response.Status)
-
-// }

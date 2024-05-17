@@ -10,13 +10,13 @@ import (
 var (
 	ErrRecordNotFound = errors.New("record not found")
 	ErrEditConflict   = errors.New("edit conflict")
-	ErrDuplicateEmail = errors.New("duplicate email")
 )
 
 type Models struct {
-	Guns   GunModel
-	Users  UserModel
-	Tokens TokenModel
+	Guns        GunModel
+	Users       UserModel
+	Token       TokenModel
+	Permissions PermissionModel
 }
 
 func NewModels(db *sql.DB) Models {
@@ -33,8 +33,15 @@ func NewModels(db *sql.DB) Models {
 			InfoLog:  infoLog,
 			ErrorLog: errorLog,
 		},
-		Tokens: TokenModel{
-			DB: db,
+		Token: TokenModel{
+			DB:       db,
+			InfoLog:  infoLog,
+			ErrorLog: errorLog,
+		},
+		Permissions: PermissionModel{
+			DB:       db,
+			InfoLog:  infoLog,
+			ErrorLog: errorLog,
 		},
 	}
 }
