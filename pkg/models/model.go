@@ -8,23 +8,22 @@ import (
 )
 
 var (
-	// ErrRecordNotFound is returned when a movie record doesn't exist in database.
 	ErrRecordNotFound = errors.New("record not found")
-
-	// ErrEditConflict is returned when a there is a data race, and we have an edit conflict.
-	ErrEditConflict = errors.New("edit conflict")
+	ErrEditConflict   = errors.New("edit conflict")
+	ErrDuplicateEmail = errors.New("duplicate email")
 )
 
 type Models struct {
-	Gun   GunModel
-	Users UserModel
+	Guns   GunModel
+	Users  UserModel
+	Tokens TokenModel
 }
 
 func NewModels(db *sql.DB) Models {
 	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
 	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
 	return Models{
-		Gun: GunModel{
+		Guns: GunModel{
 			DB:       db,
 			InfoLog:  infoLog,
 			ErrorLog: errorLog,
@@ -33,6 +32,9 @@ func NewModels(db *sql.DB) Models {
 			DB:       db,
 			InfoLog:  infoLog,
 			ErrorLog: errorLog,
+		},
+		Tokens: TokenModel{
+			DB: db,
 		},
 	}
 }
